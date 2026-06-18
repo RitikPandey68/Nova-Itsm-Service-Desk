@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Production-Grade ITSM Service Desk & SLA Dashboard">
+    <title>Enterprise IT Service Desk & ITSM Portal</title>
+    
+    <!-- Typography & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="/static/style.css">
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-theme">
+    
+    <!-- Login Screen overlay -->
+    <div id="login-screen" class="login-overlay">
+        <div class="login-card glassmorphic">
+            <div class="login-header">
+                <i class="fa-solid fa-shield-halved logo-icon"></i>
+                <h2>ITSM Portal</h2>
+                <p>Enterprise Active Directory Authentication</p>
+            </div>
+            
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
+                    <input type="text" id="login-username" placeholder="e.g. administrator" required>
+                </div>
+                <div class="input-group">
+                    <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
+                </div>
+                
+                <div class="login-help-text">
+                    <span>Mock AD Accounts: <strong>administrator</strong>, <strong>john.doe</strong>, <strong>jane.smith</strong>, <strong>operator.desk</strong></span>
+                </div>
+                
+                <button type="submit" id="login-btn" class="btn btn-primary btn-block">
+                    <span>Authenticate Securely</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+            <div id="login-error" class="alert alert-danger hidden"></div>
+        </div>
+    </div>
+
+    <!-- Main Application Container -->
+    <div id="app-container" class="app-layout hidden">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glassmorphic">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <i class="fa-solid fa-server brand-icon"></i>
+                    <div>
+                        <h1>NovaITSM</h1>
+                        <span>ITIL Operations</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="user-profile-panel">
+                <div class="avatar">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div class="user-meta">
+                    <h3 id="sidebar-user-name">User Name</h3>
+                    <span id="sidebar-user-role" class="badge">Role</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="nav-item active" id="nav-dashboard" onclick="switchTab('dashboard')">
+                        <i class="fa-solid fa-chart-line"></i> <span>Operations Dashboard</span>
+                    </li>
+                    <li class="nav-item" id="nav-incidents" onclick="switchTab('incidents')">
+                        <i class="fa-solid fa-triangle-exclamation"></i> <span>Incident Queue</span>
+                    </li>
+                    <li class="nav-item" id="nav-requests" onclick="switchTab('requests')">
+                        <i class="fa-solid fa-clipboard-list"></i> <span>Service Requests</span>
+                    </li>
+                    <li class="nav-item" id="nav-assets" onclick="switchTab('assets')">
+                        <i class="fa-solid fa-boxes-stacked"></i> <span>CMDB Asset Inventory</span>
+                    </li>
+                    <li class="nav-item" id="nav-knowledge" onclick="switchTab('knowledge')">
+                        <i class="fa-solid fa-book-open"></i> <span>Knowledge & RCAs</span>
+                    </li>
+                    <li class="nav-item" id="nav-ad-reset" onclick="switchTab('ad-reset')">
+                        <i class="fa-solid fa-key"></i> <span>AD Password Reset</span>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="btn btn-outline-danger btn-block" onclick="logout()">
+                    <i class="fa-solid fa-power-off"></i> <span>Log Out</span>
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- Top Navigation Bar -->
+            <header class="top-bar glassmorphic">
+                <div class="search-bar">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="global-search" placeholder="Search incidents, assets or articles..." onkeyup="handleGlobalSearch(event)">
+                </div>
+                <div class="header-actions">
+                    <div class="notification-bell" id="escalation-alert-bell" onclick="toggleAlertDropdown()">
+                        <i class="fa-solid fa-bell"></i>
+                        <span class="badge badge-danger hidden" id="alert-badge-count">0</span>
+                        
+                        <!-- Notification dropdown -->
+                        <div class="alert-dropdown glassmorphic hidden" id="alert-dropdown-menu">
+                            <div class="dropdown-header">
+                                <h3>Escalation & SLA Warnings</h3>
+                                <span onclick="clearAlerts(event)">Clear all</span>
+                            </div>
+                            <ul id="alert-list-items">
+                                <li class="no-alerts">No active escalation alerts.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" id="btn-create-ticket-top" onclick="openModal('create-incident-modal')">
+                        <i class="fa-solid fa-plus"></i> New Incident
+                    </button>
+                </div>
+            </header>
+            
+            <!-- Page Views -->
+            <div class="page-container">
+                
+                <!-- 1. OPERATIONS DASHBOARD VIEW -->
+                <section id="view-dashboard" class="view-section">
+                    <div class="view-header">
+                        <h2>Service Desk Command Center</h2>
+                        <p>Real-time SLA tracking, incident metrics, and security audit logs.</p>
+                    </div>
+                    
+                    <!-- Analytics Grid Cards -->
+                    <div class="metrics-grid">
+                        <div class="metric-card glassmorphic">
+                            <div class="metric-icon bg-blue"><i class="fa-solid fa-folder-open"></i></div>
+                            <div class="metric-info">
+                                <h3>Open Incidents</h3>
+                                <span class="metric-value" id="m-open-incidents">0</span>
+                                <p>Active queue tickets</p>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-card glassmorphic">
+                            <div class="metric-icon bg-green"><i class="fa-solid fa-award"></i></div>
+                            <div class="metric-info">
+                                <h3>SLA Compliance</h3>
+                                <span class="metric-value" id="m-sla-compliance">100%</span>
+                                <p>Target compliance threshold: 90%</p>
+                            </div>
+                            <!-- Dynamic circular progress in CSS -->
+                        </div>
+                        
+                        <div class="metric-card glassmorphic">
+                            <div class="metric-icon bg-purple"><i class="fa-solid fa-stopwatch"></i></div>
+                            <div class="metric-info">
+                                <h3>MTTR (Mean Time to Resolve)</h3>
+                                <span class="metric-value" id="m-mttr">0.0h</span>
+                                <p>Reduced by 40% target</p>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-card glassmorphic">
+                            <div class="metric-icon bg-red"><i class="fa-solid fa-circle-exclamation"></i></div>
+                            <div class="metric-info">
+                                <h3>Critical Escalations</h3>
+                                <span class="metric-value" id="m-escalated">0</span>
+                                <p>Unassigned: <span id="m-unassigned">0</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Dashboard Visualizations -->
+                    <div class="dashboard-charts-grid">
+                        <div class="chart-card glassmorphic">
+                            <h3>SLA Status Monitoring</h3>
+                            <div class="chart-container">
+                                <canvas id="chart-sla"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glassmorphic">
+                            <h3>Incidents by Priority</h3>
+                            <div class="chart-container">
+                                <canvas id="chart-priority"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bottom Grid: Recent Audits & SLA countdowns -->
+                    <div class="dashboard-details-grid">
+                        
+                        <!-- Security Audit Trail -->
+                        <div class="details-card glassmorphic flex-2">
+                            <div class="card-header">
+                                <h3>Security Awareness & Audit Trail</h3>
+                                <span class="badge badge-info">Real-time Audits</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Action</th>
+                                            <th>Subject / Operator</th>
+                                            <th>Details</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="audit-log-rows">
+                                        <!-- Populated via API -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Live SLA Alert Panel -->
+                        <div class="details-card glassmorphic flex-1">
+                            <h3>SLA Health Indicators</h3>
+                            <div class="sla-indicators-list" id="sla-health-indicators">
+                                <!-- Populated dynamically -->
+                                <div class="no-indicator-data">No active tickets to track.</div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </section>
+                
+                <!-- 2. INCIDENT QUEUE VIEW -->
+                <section id="view-incidents" class="view-section hidden">
+                    <div class="view-header">
+                        <div class="view-header-title">
+                            <h2>ITIL Incident Management Queue</h2>
+                            <p>Manage, assign, and escalate corporate IT incidents.</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="openModal('create-incident-modal')">
+                            <i class="fa-solid fa-circle-plus"></i> Report Incident
+                        </button>
+                    </div>
+                    
+                    <!-- Filter bar -->
+                    <div class="filter-bar glassmorphic">
+                        <div class="filter-group">
+                            <label for="filter-status">Status</label>
+                            <select id="filter-status" onchange="fetchIncidents()">
+                                <option value="">All Statuses</option>
+                                <option value="New">New</option>
+                                <option value="Assigned">Assigned</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Resolved">Resolved</option>
+                                <option value="Closed">Closed</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-priority">Priority</label>
+                            <select id="filter-priority" onchange="fetchIncidents()">
+                                <option value="">All Priorities</option>
+                                <option value="P1">P1 - Critical</option>
+                                <option value="P2">P2 - High</option>
+                                <option value="P3">P3 - Medium</option>
+                                <option value="P4">P4 - Low</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline" onclick="resetIncidentFilters()">Clear Filters</button>
+                    </div>
+                    
+                    <!-- Incidents Table -->
+                    <div class="table-card glassmorphic">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Ticket ID</th>
+                                        <th>Title</th>
+                                        <th>Priority</th>
+                                        <th>Category</th>
+                                        <th>Status</th>
+                                        <th>Assigned To</th>
+                                        <th>SLA Deadline</th>
+                                        <th>Escalation</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="incident-queue-rows">
+                                    <!-- Populated via API -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 3. SERVICE REQUESTS CATALOG VIEW -->
+                <section id="view-requests" class="view-section hidden">
+                    <div class="view-header">
+                        <h2>IT Service Request Catalog</h2>
+                        <p>Order hardware, request software licenses, and manage provisioning approvals.</p>
+                    </div>
+                    
+                    <!-- Catalog Cards -->
+                    <div class="catalog-grid">
+                        <div class="catalog-item glassmorphic">
+                            <div class="catalog-icon"><i class="fa-solid fa-laptop-code"></i></div>
+                            <h3>Hardware Provisioning</h3>
+                            <p>Request an enterprise standard development workstation (Lenovo ThinkPad X1 / MacBook Pro M3).</p>
+                            <span class="price">$1,850.00</span>
+                            <button class="btn btn-primary btn-block" onclick="openRequestModal('Laptop Provisioning', 1850)">Request Provisioning</button>
+                        </div>
+                        
+                        <div class="catalog-item glassmorphic">
+                            <div class="catalog-icon"><i class="fa-solid fa-key"></i></div>
+                            <h3>VPN Remote Access</h3>
+                            <p>Provision secure remote gateway connection profile for off-site connectivity.</p>
+                            <span class="price">Free</span>
+                            <button class="btn btn-primary btn-block" onclick="openRequestModal('VPN Access', 0)">Request Gateway Profile</button>
+                        </div>
+                        
+                        <div class="catalog-item glassmorphic">
+                            <div class="catalog-icon"><i class="fa-solid fa-window-restore"></i></div>
+                            <h3>Software Subscription</h3>
+                            <p>Enterprise subscription licenses (Microsoft 365, Adobe Creative Cloud, Visual Studio Enterprise).</p>
+                            <span class="price">$45.00 / mo</span>
+                            <button class="btn btn-primary btn-block" onclick="openRequestModal('Software License', 45)">Order Subscription</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Service Requests Log -->
+                    <div class="view-header" style="margin-top: 40px;">
+                        <h2>Submitted Service Requests</h2>
+                        <p>Track approval and provisioning flows of catalog items.</p>
+                    </div>
+                    
+                    <div class="table-card glassmorphic">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Request ID</th>
+                                        <th>Item</th>
+                                        <th>Requester</th>
+                                        <th>Cost</th>
+                                        <th>Status</th>
+                                        <th>Date Submitted</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="service-request-rows">
+                                    <!-- Populated via API -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 4. CMDB ASSETS VIEW -->
+                <section id="view-assets" class="view-section hidden">
+                    <div class="view-header">
+                        <div class="view-header-title">
+                            <h2>Configuration Management Database (CMDB)</h2>
+                            <p>Track hardware configuration items (CIs) in the MySQL Asset Inventory database.</p>
+                        </div>
+                        <button class="btn btn-primary" id="btn-add-asset" onclick="openModal('create-asset-modal')">
+                            <i class="fa-solid fa-plus-circle"></i> Add Asset CI
+                        </button>
+                    </div>
+                    
+                    <!-- CMDB Asset Grid -->
+                    <div class="assets-grid" id="cmdb-assets-list">
+                        <!-- Populated via API -->
+                    </div>
+                </section>
+                
+                <!-- 5. KNOWLEDGE & RCAS VIEW -->
+                <section id="view-knowledge" class="view-section hidden">
+                    <div class="view-header">
+                        <h2>Knowledge Management & Root Cause Analysis</h2>
+                        <p>Learn troubleshooting procedures and review problem management RCA reports.</p>
+                    </div>
+                    
+                    <div class="tab-sub-nav">
+                        <button class="tab-sub-btn active" id="sub-tab-kb" onclick="switchSubTab('kb')">Knowledge Base Articles</button>
+                        <button class="tab-sub-btn" id="sub-tab-rca" onclick="switchSubTab('rca')">Problem Root Cause Analyses (RCAs)</button>
+                    </div>
+                    
+                    <!-- SUB SECTION 1: KNOWLEDGE BASE -->
+                    <div id="sub-view-kb" class="sub-view-section">
+                        <div class="kb-actions-bar">
+                            <div class="kb-search-container">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="kb-search-input" placeholder="Search KB articles..." onkeyup="handleKBSearch(event)">
+                            </div>
+                            <button class="btn btn-primary" id="btn-create-kb" onclick="openModal('create-article-modal')">Create Article</button>
+                        </div>
+                        
+                        <div class="kb-articles-grid" id="kb-articles-list">
+                            <!-- Populated via API -->
+                        </div>
+                    </div>
+                    
+                    <!-- SUB SECTION 2: RCAs -->
+                    <div id="sub-view-rca" class="sub-view-section hidden">
+                        <div class="rca-articles-grid" id="rca-articles-list">
+                            <!-- Populated via API -->
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 6. AD PASSWORD RESET VIEW -->
+                <section id="view-ad-reset" class="view-section hidden">
+                    <div class="view-header">
+                        <h2>Self-Service Active Directory Manager</h2>
+                        <p>Simulate Domain Controller self-service password reset and security lockouts.</p>
+                    </div>
+                    
+                    <div class="ad-layout-grid">
+                        <div class="ad-reset-card glassmorphic">
+                            <h3><i class="fa-solid fa-key"></i> AD Reset Form</h3>
+                            <p class="card-instruction">Perform an Active Directory account password reset. Failing credentials 3 times triggers lockout protection.</p>
+                            
+                            <form id="ad-reset-form">
+                                <div class="input-group">
+                                    <label for="ad-username"><i class="fa-solid fa-user-shield"></i> AD Username</label>
+                                    <input type="text" id="ad-username" placeholder="e.g. administrator" required>
+                                </div>
+                                <div class="input-group">
+                                    <label for="ad-old-password"><i class="fa-solid fa-lock-open"></i> Current AD Password</label>
+                                    <input type="password" id="ad-old-password" placeholder="••••••••" required>
+                                </div>
+                                <div class="input-group">
+                                    <label for="ad-new-password"><i class="fa-solid fa-lock"></i> New AD Password</label>
+                                    <input type="password" id="ad-new-password" placeholder="••••••••" required>
+                                    <span class="password-requirements">Password rules: Min 8 chars, 1 digit, 1 capital letter.</span>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary btn-block">Submit Reset Request</button>
+                            </form>
+                            
+                            <div id="ad-reset-status" class="alert hidden" style="margin-top: 15px;"></div>
+                        </div>
+                        
+                        <div class="ad-info-card glassmorphic">
+                            <h3>Active Directory Lockout Simulation Console</h3>
+                            <p>In a production system, this module integrates with standard LDAP query endpoints. Here, lockouts are managed by Redis cache timers.</p>
+                            
+                            <div class="ad-status-panel">
+                                <h4>Domain Accounts Simulated Status</h4>
+                                <div class="ad-account-status-list">
+                                    <div class="ad-status-row">
+                                        <span>administrator</span>
+                                        <span class="badge badge-success" id="status-administrator">ACTIVE</span>
+                                    </div>
+                                    <div class="ad-status-row">
+                                        <span>john.doe</span>
+                                        <span class="badge badge-success" id="status-john-doe">ACTIVE</span>
+                                    </div>
+                                    <div class="ad-status-row">
+                                        <span>jane.smith</span>
+                                        <span class="badge badge-success" id="status-jane-smith">ACTIVE</span>
+                                    </div>
+                                    <div class="ad-status-row">
+                                        <span>operator.desk</span>
+                                        <span class="badge badge-success" id="status-operator-desk">ACTIVE</span>
+                                    </div>
+                                </div>
+                                
+                                <div id="ad-admin-unlock-zone" class="hidden" style="margin-top: 25px;">
+                                    <h4 class="text-danger">Administrative Account Control</h4>
+                                    <p>Select a locked out account to force unlock (Administrator permission required).</p>
+                                    <div class="input-group-row">
+                                        <select id="unlock-username-select">
+                                            <!-- Dynamically populated -->
+                                        </select>
+                                        <button class="btn btn-danger" onclick="forceUnlockADAccount()">Unlock User</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+            </div>
+        </main>
+    </div>
+
+    <!-- ==========================================
+         APPLICATION MODALS (POPUP DIALOGS)
+         ========================================== -->
+         
+    <!-- 1. CREATE INCIDENT MODAL -->
+    <div id="create-incident-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-triangle-exclamation"></i> Log New IT Incident</h2>
+                <span class="modal-close" onclick="closeModal('create-incident-modal')">&times;</span>
+            </div>
+            <form id="create-incident-form">
+                <div class="input-group">
+                    <label for="incident-title">Incident Title</label>
+                    <input type="text" id="incident-title" placeholder="Brief summary of failure (e.g. Cisco Switch port offline)" required>
+                </div>
+                <div class="input-group">
+                    <label for="incident-desc">Description</label>
+                    <textarea id="incident-desc" rows="4" placeholder="Provide step-by-step symptoms, impacts, and error codes." required></textarea>
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="incident-priority">Priority / Severity</label>
+                        <select id="incident-priority">
+                            <option value="P1">P1 - Critical (2h Resolution)</option>
+                            <option value="P2">P2 - High (8h Resolution)</option>
+                            <option value="P3" selected>P3 - Medium (24h Resolution)</option>
+                            <option value="P4">P4 - Low (72h Resolution)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="incident-category">Category</label>
+                        <select id="incident-category">
+                            <option value="Hardware">Hardware Failure</option>
+                            <option value="Software" selected>Software Error</option>
+                            <option value="Network">Network Outage</option>
+                            <option value="Access">Access / IAM</option>
+                            <option value="Database">Database Lag</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="incident-asset">Link CMDB Configuration Item (Asset)</label>
+                    <select id="incident-asset">
+                        <option value="">None - Unlinked Asset</option>
+                        <!-- Populated via API -->
+                    </select>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('create-incident-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Ticket</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. CREATE CMDB ASSET MODAL -->
+    <div id="create-asset-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-boxes-stacked"></i> Register CMDB Asset CI</h2>
+                <span class="modal-close" onclick="closeModal('create-asset-modal')">&times;</span>
+            </div>
+            <form id="create-asset-form">
+                <div class="input-group">
+                    <label for="asset-name">Asset Name</label>
+                    <input type="text" id="asset-name" placeholder="e.g. Finance Production Server" required>
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="asset-category">Category</label>
+                        <select id="asset-category">
+                            <option value="Laptop">Laptop Workstation</option>
+                            <option value="Server">Server Instance</option>
+                            <option value="Network Device">Network Router/Switch</option>
+                            <option value="Peripheral">Peripheral / Printer</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="asset-model">Manufacturer & Model</label>
+                        <input type="text" id="asset-model" placeholder="e.g. Apple MacBook Pro M3" required>
+                    </div>
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="asset-serial">Serial Number</label>
+                        <input type="text" id="asset-serial" placeholder="e.g. SN-98765432" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="asset-status">CMDB Lifecycle Status</label>
+                        <select id="asset-status">
+                            <option value="In Stock">In Stock (Warehouse)</option>
+                            <option value="In Service" selected>In Service (Active)</option>
+                            <option value="Under Repair">Under Repair</option>
+                            <option value="Retired">Retired / Decommissioned</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="asset-owner">Owner Email (Optional)</label>
+                        <input type="email" id="asset-owner" placeholder="user@enterprise.local">
+                    </div>
+                    <div class="input-group">
+                        <label for="asset-cost">Purchase Value ($)</label>
+                        <input type="number" id="asset-cost" step="0.01" value="0.00">
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('create-asset-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add to Inventory</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. RESOLVE TICKET MODAL -->
+    <div id="resolve-ticket-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-circle-check"></i> Complete Ticket Resolution</h2>
+                <span class="modal-close" onclick="closeModal('resolve-ticket-modal')">&times;</span>
+            </div>
+            <form id="resolve-ticket-form">
+                <input type="hidden" id="resolve-ticket-id">
+                <div class="input-group">
+                    <label>Resolution Summary</label>
+                    <p class="field-help">Describe the troubleshooting steps, patches, or fixes applied to restore service.</p>
+                    <textarea id="resolve-summary" rows="4" placeholder="Enter resolution details..." required></textarea>
+                </div>
+                
+                <div id="p1-rca-checkbox-container" class="alert alert-warning hidden">
+                    <p><strong><i class="fa-solid fa-circle-exclamation"></i> ITIL Alert:</strong> Because this is a high-priority incident, a Root Cause Analysis (RCA) is required to prevent reoccurrence.</p>
+                    <div class="checkbox-row" style="margin-top: 10px;">
+                        <input type="checkbox" id="resolve-trigger-rca" checked>
+                        <label for="resolve-trigger-rca">Open RCA submission form immediately after resolving.</label>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('resolve-ticket-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-success">Resolve Incident</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. SUBMIT RCA MODAL -->
+    <div id="submit-rca-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-microscope"></i> Problem Management: Root Cause Analysis (RCA)</h2>
+                <span class="modal-close" onclick="closeModal('submit-rca-modal')">&times;</span>
+            </div>
+            <form id="submit-rca-form">
+                <input type="hidden" id="rca-incident-id">
+                
+                <div class="input-group">
+                    <label>Linked Incident</label>
+                    <input type="text" id="rca-incident-title" readonly class="readonly-input">
+                </div>
+                
+                <div class="input-group">
+                    <label for="rca-root-cause">1. Root Cause Description</label>
+                    <textarea id="rca-root-cause" rows="3" placeholder="What physical, human, or systemic failure caused this issue?" required></textarea>
+                </div>
+                
+                <div class="input-group">
+                    <label for="rca-corrective">2. Immediate Corrective Action</label>
+                    <textarea id="rca-corrective" rows="2" placeholder="What was done immediately to restore services?" required></textarea>
+                </div>
+                
+                <div class="input-group">
+                    <label for="rca-preventative">3. Long-term Preventative Plan</label>
+                    <textarea id="rca-preventative" rows="2" placeholder="What architectural or policy changes will prevent this from happening again?" required></textarea>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('submit-rca-modal')">Skip RCA</button>
+                    <button type="submit" class="btn btn-primary">Submit RCA Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 5. KNOWLEDGE ARTICLE DETAILED VIEW MODAL -->
+    <div id="view-kb-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2 id="kb-modal-title">Knowledge Article</h2>
+                <span class="modal-close" onclick="closeModal('view-kb-modal')">&times;</span>
+            </div>
+            <div class="kb-modal-body">
+                <div class="article-meta-row">
+                    <span class="badge" id="kb-modal-category">Category</span>
+                    <span><i class="fa-solid fa-user"></i> Author: <span id="kb-modal-author">name</span></span>
+                    <span><i class="fa-solid fa-eye"></i> Views: <span id="kb-modal-views">0</span></span>
+                </div>
+                <hr>
+                <div class="article-body-content" id="kb-modal-content">
+                    <!-- Text content -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('view-kb-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. RCA DETAILED VIEW MODAL -->
+    <div id="view-rca-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2>RCA Report details</h2>
+                <span class="modal-close" onclick="closeModal('view-rca-modal')">&times;</span>
+            </div>
+            <div class="rca-modal-body">
+                <h3 id="rca-modal-inc-num">Incident #: INC-1000</h3>
+                <h4 id="rca-modal-inc-title">Title: Incident title</h4>
+                <hr>
+                <div class="rca-section-block">
+                    <h5><i class="fa-solid fa-triangle-exclamation text-danger"></i> Root Cause</h5>
+                    <p id="rca-modal-root-cause">Details...</p>
+                </div>
+                <div class="rca-section-block">
+                    <h5><i class="fa-solid fa-wrench text-warning"></i> Corrective Action</h5>
+                    <p id="rca-modal-corrective">Details...</p>
+                </div>
+                <div class="rca-section-block">
+                    <h5><i class="fa-solid fa-shield-halved text-success"></i> Preventative Plan</h5>
+                    <p id="rca-modal-preventative">Details...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('view-rca-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. SUBMIT SERVICE REQUEST MODAL -->
+    <div id="create-request-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-clipboard-list"></i> Catalog Request Submission</h2>
+                <span class="modal-close" onclick="closeModal('create-request-modal')">&times;</span>
+            </div>
+            <form id="create-request-form">
+                <input type="hidden" id="req-item-type">
+                <input type="hidden" id="req-item-cost">
+                
+                <div class="input-group">
+                    <label>Selected Catalog Option</label>
+                    <input type="text" id="req-item-display" readonly class="readonly-input">
+                </div>
+                
+                <div class="input-group">
+                    <label for="req-title">Request Justification Title</label>
+                    <input type="text" id="req-title" placeholder="Brief reason (e.g., Laptop for new dev environment)" required>
+                </div>
+                
+                <div class="input-group">
+                    <label for="req-desc">Business Purpose / Details</label>
+                    <textarea id="req-desc" rows="3" placeholder="Provide details like shipping address, license emails, or reason for request." required></textarea>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('create-request-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 8. CREATE KNOWLEDGE ARTICLE MODAL -->
+    <div id="create-article-modal" class="modal-overlay hidden">
+        <div class="modal-content glassmorphic">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-book-open"></i> Publish Knowledge Base Article</h2>
+                <span class="modal-close" onclick="closeModal('create-article-modal')">&times;</span>
+            </div>
+            <form id="create-article-form">
+                <div class="input-group">
+                    <label for="article-title">Article Title</label>
+                    <input type="text" id="article-title" placeholder="Troubleshooting Cisco VPN Connection error" required>
+                </div>
+                
+                <div class="input-group">
+                    <label for="article-category">Category</label>
+                    <select id="article-category">
+                        <option value="Hardware">Hardware troubleshooting</option>
+                        <option value="Software">Software & Apps</option>
+                        <option value="Network">Network configurations</option>
+                        <option value="Security">Security & Authentication</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="article-content">Article Content (Markdown supported)</label>
+                    <textarea id="article-content" rows="8" placeholder="Provide step-by-step guide with inputs, errors and solutions..." required></textarea>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('create-article-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Publish Article</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Script File -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

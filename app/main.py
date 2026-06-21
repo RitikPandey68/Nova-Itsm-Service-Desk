@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.database import BasePostgres, postgres_engine, BaseMysql, mysql_engine
-from app.routers import auth, incidents, requests, assets, knowledge, dashboard
+from app.routers import auth, incidents, requests, assets, knowledge, dashboard, servicenow
 
 # 1. Lifespan event handler for database auto-migration on startup
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.include_router(requests.router, prefix="/api")
 app.include_router(assets.router, prefix="/api")
 app.include_router(knowledge.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(servicenow.router, prefix="/api")
 
 # 5. Serve static files
 # Ensure static directory exists

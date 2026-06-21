@@ -96,6 +96,9 @@
                     <li class="nav-item" id="nav-ad-reset" onclick="switchTab('ad-reset')">
                         <i class="fa-solid fa-key"></i> <span>AD Password Reset</span>
                     </li>
+                    <li class="nav-item" id="nav-servicenow" onclick="switchTab('servicenow')">
+                        <i class="fa-solid fa-network-wired"></i> <span>ServiceNow PDI Engine</span>
+                    </li>
                 </ul>
             </nav>
             
@@ -488,6 +491,234 @@
                                             <!-- Dynamically populated -->
                                         </select>
                                         <button class="btn btn-danger" onclick="forceUnlockADAccount()">Unlock User</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 7. SERVICENOW PDI SANDBOX VIEW -->
+                <section id="view-servicenow" class="view-section hidden">
+                    <div class="view-header">
+                        <h2>ServiceNow PDI Engine Sandbox</h2>
+                        <p>Interactive ServiceNow Personal Developer Instance (PDI) simulator demonstrating client scripting, database triggers, UI policies, and REST integrations.</p>
+                    </div>
+                    
+                    <div class="sn-sandbox-grid">
+                        <!-- LEFT PANEL: Automation Controls & Presets -->
+                        <div class="sn-card sn-control-card glassmorphic">
+                            <h3><i class="fa-solid fa-gears text-primary"></i> Platform Configurations</h3>
+                            
+                            <div class="sn-setting-group">
+                                <label for="sn-module-select">ITIL Module Workflow</label>
+                                <select id="sn-module-select" onchange="onSNModuleChange()">
+                                    <option value="incident">Incident Management (INC)</option>
+                                    <option value="problem">Problem Management (PRB)</option>
+                                    <option value="change">Change Management (CHG)</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Scripts & Rules Accordion -->
+                            <div class="sn-presets-accordions">
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleSNAccordion('ac-client-scripts')">
+                                        <span><i class="fa-solid fa-code text-cyan"></i> Client Scripts (g_form)</span>
+                                        <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                                    </div>
+                                    <div id="ac-client-scripts" class="accordion-content">
+                                        <!-- Presets injected dynamically -->
+                                    </div>
+                                </div>
+                                
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleSNAccordion('ac-ui-policies')">
+                                        <span><i class="fa-solid fa-eye-slash text-purple"></i> UI Policies</span>
+                                        <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                                    </div>
+                                    <div id="ac-ui-policies" class="accordion-content">
+                                        <!-- UI Policies injected dynamically -->
+                                    </div>
+                                </div>
+                                
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleSNAccordion('ac-business-rules')">
+                                        <span><i class="fa-solid fa-database text-green"></i> Business Rules (current)</span>
+                                        <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                                    </div>
+                                    <div id="ac-business-rules" class="accordion-content">
+                                        <!-- Business Rules injected dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Flow Designer Visualizer Inside Left Panel -->
+                            <div class="sn-flow-designer-panel">
+                                <h4><i class="fa-solid fa-network-wired text-warning"></i> Flow Designer Pipeline</h4>
+                                <div class="sn-flow-selector-row">
+                                    <select id="sn-flow-select" onchange="loadSNFlow()">
+                                        <!-- Dynamic options -->
+                                    </select>
+                                    <button class="btn btn-primary btn-sm" onclick="runSNFlow()">Test Flow</button>
+                                </div>
+                                <div class="flow-visual-canvas" id="flow-visual-canvas">
+                                    <!-- Flow nodes step by step -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- RIGHT PANEL: ServiceNow Form View -->
+                        <div class="sn-card sn-form-card glassmorphic">
+                            <div class="sn-form-header">
+                                <div class="sn-form-title">
+                                    <i class="fa-solid fa-server"></i>
+                                    <span id="sn-ticket-header-number">INC0010042</span>
+                                </div>
+                                <div class="sn-form-actions">
+                                    <button class="btn btn-outline-danger btn-sm" onclick="resetSNForm()"><i class="fa-solid fa-arrows-rotate"></i> Reset</button>
+                                    <button class="btn btn-primary btn-sm" onclick="submitSNForm()"><i class="fa-solid fa-circle-check"></i> Save / Update</button>
+                                </div>
+                            </div>
+                            
+                            <!-- ServiceNow Mock Form -->
+                            <form id="sn-incident-form" class="sn-form-layout" onsubmit="event.preventDefault();">
+                                <input type="hidden" id="sn-sys-id" value="">
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col">
+                                        <label for="sn-number">Number</label>
+                                        <input type="text" id="sn-number" class="sn-input-readonly" readonly value="INC0010042">
+                                    </div>
+                                    <div class="sn-form-col">
+                                        <label for="sn-caller"><span class="sn-req-marker">*</span> Caller</label>
+                                        <select id="sn-caller" required>
+                                            <option value="john.doe@enterprise.local">john.doe@enterprise.local</option>
+                                            <option value="jane.smith@enterprise.local">jane.smith@enterprise.local</option>
+                                            <option value="administrator@enterprise.local">administrator@enterprise.local</option>
+                                            <option value="operator.desk@enterprise.local">operator.desk@enterprise.local</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col">
+                                        <label for="sn-category">Category</label>
+                                        <select id="sn-category" onchange="onSNCategoryChange()">
+                                            <option value="Software">Software</option>
+                                            <option value="Hardware">Hardware</option>
+                                            <option value="Network">Network</option>
+                                            <option value="Database">Database</option>
+                                        </select>
+                                    </div>
+                                    <div class="sn-form-col">
+                                        <label for="sn-state">State</label>
+                                        <select id="sn-state" onchange="onSNStateChange()">
+                                            <option value="New">New</option>
+                                            <option value="In Progress">In Progress</option>
+                                            <option value="Resolved">Resolved</option>
+                                            <option value="Closed">Closed</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col">
+                                        <label for="sn-impact">Impact</label>
+                                        <select id="sn-impact" onchange="onSNImpactUrgencyChange()">
+                                            <option value="1">1 - High</option>
+                                            <option value="2">2 - Medium</option>
+                                            <option value="3" selected>3 - Low</option>
+                                        </select>
+                                    </div>
+                                    <div class="sn-form-col">
+                                        <label for="sn-urgency">Urgency</label>
+                                        <select id="sn-urgency" onchange="onSNImpactUrgencyChange()">
+                                            <option value="1">1 - High</option>
+                                            <option value="2">2 - Medium</option>
+                                            <option value="3" selected>3 - Low</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col">
+                                        <label for="sn-priority">Priority</label>
+                                        <input type="text" id="sn-priority" class="sn-input-readonly" readonly value="4 - Low">
+                                    </div>
+                                    <div class="sn-form-col">
+                                        <label for="sn-assignment-group">Assignment Group</label>
+                                        <select id="sn-assignment-group">
+                                            <option value="IT Service Desk">IT Service Desk</option>
+                                            <option value="Network Administration">Network Administration</option>
+                                            <option value="Database Operations">Database Operations</option>
+                                            <option value="Hardware Support Team">Hardware Support Team</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col-full">
+                                        <label for="sn-short-description"><span class="sn-req-marker">*</span> Short Description</label>
+                                        <input type="text" id="sn-short-description" placeholder="A brief incident summary..." required value="Network printer offline on 4th floor finance room">
+                                    </div>
+                                </div>
+                                
+                                <!-- Conditionally Visible Fields (Managed by UI Policy) -->
+                                <div class="sn-form-row sn-conditional-field hidden" id="row-resolution-code">
+                                    <div class="sn-form-col-full">
+                                        <label for="sn-resolution-code"><span class="sn-req-marker">*</span> Resolution Code</label>
+                                        <select id="sn-resolution-code">
+                                            <option value="">-- Select Resolution Code --</option>
+                                            <option value="Workaround Provided">Workaround Provided</option>
+                                            <option value="Permanent Solution Implemented">Permanent Solution Implemented</option>
+                                            <option value="Duplicate Incident">Duplicate Incident</option>
+                                            <option value="Could Not Replicate">Could Not Replicate</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="sn-form-row">
+                                    <div class="sn-form-col-full">
+                                        <label for="sn-work-notes"><span class="sn-req-marker" id="sn-work-notes-req" style="display:none;">*</span> Work Notes / Activity Log</label>
+                                        <textarea id="sn-work-notes" rows="3" placeholder="Provide work log activities, root-cause analyses, or resolution comments..."></textarea>
+                                    </div>
+                                </div>
+                            </form>
+                            
+                            <!-- ServiceNow Platform Console Tabs -->
+                            <div class="sn-console-container">
+                                <div class="sn-console-tabs">
+                                    <button class="sn-console-tab-btn sn-console-tabactive" id="tab-btn-client-logs" onclick="switchSNConsoleTab('client-logs')">
+                                        <i class="fa-solid fa-code"></i> Client Logs
+                                    </button>
+                                    <button class="sn-console-tab-btn" id="tab-btn-server-logs" onclick="switchSNConsoleTab('server-logs')">
+                                        <i class="fa-solid fa-database"></i> Server Logs (BR)
+                                    </button>
+                                    <button class="sn-console-tab-btn" id="tab-btn-rest-logs" onclick="switchSNConsoleTab('rest-logs')">
+                                        <i class="fa-solid fa-cloud-arrow-up"></i> REST API Synced Payloads
+                                    </button>
+                                </div>
+                                
+                                <div class="sn-console-body">
+                                    <!-- Client Console -->
+                                    <div class="console-tab-view" id="console-view-client-logs">
+                                        <div class="console-logs-list" id="sn-client-logs-list">
+                                            <div class="log-line system-line">[System] PDI sandbox console active. g_form API initialized.</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Server Console -->
+                                    <div class="console-tab-view hidden" id="console-view-server-logs">
+                                        <div class="console-logs-list" id="sn-server-logs-list">
+                                            <div class="log-line system-line">[System] GlideSystem database logger listening for Business Rules...</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- REST Sync Console -->
+                                    <div class="console-tab-view hidden" id="console-view-rest-logs">
+                                        <div class="console-logs-list" id="sn-rest-logs-list">
+                                            <div class="log-line system-line">[System] REST sync outbound engine standing by for API synchronization.</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

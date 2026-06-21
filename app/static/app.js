@@ -213,6 +213,8 @@ function switchTab(tabName) {
         fetchKnowledge();
     } else if (tabName === "ad-reset") {
         loadADTab();
+    } else if (tabName === "servicenow") {
+        initServiceNowPDI();
     }
 }
 
@@ -1286,4 +1288,596 @@ function handleGlobalSearch(e) {
     if (e.key === "Enter" && term) {
         alert(`Searching for [${term}] across ITSM indexes. Navigate to Incident Queue or Knowledge Base tabs to filter results.`);
     }
+}
+
+// ==========================================
+// ServiceNow PDI Engine Sandbox Implementation
+// ==========================================
+
+let snPresets = null;
+let snActiveClientScripts = {};
+let snActiveUIPolicies = {};
+let snActiveBusinessRules = {};
+let snActiveFlow = null;
+let currentSNConsoleTab = 'client-logs';
+
+async function initServiceNowPDI() {
+    // 1. Fetch presets if not already cached
+    if (!snPresets) {
+        try {
+            snPresets = await apiFetch('/api/servicenow/presets');
+            
+            // Turn presets into map/active flags
+            snPresets.client_scripts.forEach(s => {
+                snActiveClientScripts[s.id] = true; // Enabled by default
+            });
+            snPresets.ui_policies.forEach(p => {
+                snActiveUIPolicies[p.id] = true;
+            });
+            snPresets.business_rules.forEach(r => {
+                snActiveBusinessRules[r.id] = true;
+            });
+        } catch (err) {
+            console.error("Failed to load ServiceNow presets", err);
+            addSNConsoleLog('client-logs', '[System Error] Failed to fetch presets from backend API.', 'error-line');
+            return;
+        }
+    }
+    
+    // 2. Load configurations list
+    renderSNPresets();
+    
+    // 3. Load flows
+    populateSNFlows();
+    
+    // 4. Initialize first record form state
+    resetSNForm();
+}
+
+function addSNConsoleLog(tabId, message, className = '') {
+    const listElement = document.getElementById(`sn-${tabId}-list`);
+    if (!listElement) return;
+    
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    
+    const line = document.createElement('div');
+    line.className = `log-line ${className}`;
+    line.textContent = `[${timeStr}] ${message}`;
+    listElement.appendChild(line);
+    
+    // Auto-scroll to bottom
+    const parentContainer = listElement.closest('.console-tab-view');
+    if (parentContainer) {
+        parentContainer.scrollTop = parentContainer.scrollHeight;
+    }
+}
+
+function switchSNConsoleTab(tabName) {
+    document.querySelectorAll('.sn-console-tab-btn').forEach(btn => {
+        btn.classList.remove('sn-console-tabactive');
+    });
+    
+    document.querySelectorAll('.console-tab-view').forEach(view => {
+        view.classList.add('hidden');
+    });
+    
+    // Set active tab button
+    document.getElementById(`tab-btn-${tabName}`).classList.add('sn-console-tabactive');
+    
+    // Show view
+    document.getElementById(`console-view-${tabName}`).classList.remove('hidden');
+    
+    currentSNConsoleTab = tabName;
+}
+
+function toggleSNAccordion(id) {
+    const item = document.getElementById(id).closest('.accordion-item');
+    const wasOpen = item.classList.contains('open');
+    
+    // Close all accordions first
+    document.querySelectorAll('.accordion-item').forEach(i => {
+        i.classList.remove('open');
+    });
+    
+    if (!wasOpen) {
+        item.classList.add('open');
+    }
+}
+
+function renderSNPresets() {
+    if (!snPresets) return;
+    
+    // Client Scripts
+    const csContainer = document.getElementById('ac-client-scripts');
+    csContainer.innerHTML = snPresets.client_scripts.map(s => `
+        <div class="sn-preset-item">
+            <div class="sn-preset-meta">
+                <h5>${escapeHTML(s.name)}</h5>
+                <span>${escapeHTML(s.type)}</span>
+            </div>
+            <p class="sn-preset-desc">${escapeHTML(s.description)}</p>
+            <div class="sn-preset-actions">
+                <input type="checkbox" id="chk-cs-${s.id}" ${snActiveClientScripts[s.id] ? 'checked' : ''} onchange="togglePresetActive('cs', '${s.id}')">
+                <label for="chk-cs-${s.id}">Active</label>
+                <button class="btn-code" onclick="viewPresetCode('client_scripts', '${s.id}')"><i class="fa-solid fa-code"></i> View Script</button>
+            </div>
+        </div>
+    `).join('');
+    
+    // UI Policies
+    const upContainer = document.getElementById('ac-ui-policies');
+    upContainer.innerHTML = snPresets.ui_policies.map(p => `
+        <div class="sn-preset-item">
+            <div class="sn-preset-meta">
+                <h5>${escapeHTML(p.name)}</h5>
+                <span>UI Policy</span>
+            </div>
+            <p class="sn-preset-desc"><strong>Condition:</strong> ${escapeHTML(p.conditions)}<br>${escapeHTML(p.description)}</p>
+            <div class="sn-preset-actions">
+                <input type="checkbox" id="chk-up-${p.id}" ${snActiveUIPolicies[p.id] ? 'checked' : ''} onchange="togglePresetActive('up', '${p.id}')">
+                <label for="chk-up-${p.id}">Active</label>
+                <button class="btn-code" onclick="viewPresetCode('ui_policies', '${p.id}')"><i class="fa-solid fa-circle-info"></i> Details</button>
+            </div>
+        </div>
+    `).join('');
+    
+    // Business Rules
+    const brContainer = document.getElementById('ac-business-rules');
+    brContainer.innerHTML = snPresets.business_rules.map(r => `
+        <div class="sn-preset-item">
+            <div class="sn-preset-meta">
+                <h5>${escapeHTML(r.name)}</h5>
+                <span>${escapeHTML(r.when)}</span>
+            </div>
+            <p class="sn-preset-desc">${escapeHTML(r.description)}</p>
+            <div class="sn-preset-actions">
+                <input type="checkbox" id="chk-br-${r.id}" ${snActiveBusinessRules[r.id] ? 'checked' : ''} onchange="togglePresetActive('br', '${r.id}')">
+                <label for="chk-br-${r.id}">Active</label>
+                <button class="btn-code" onclick="viewPresetCode('business_rules', '${r.id}')"><i class="fa-solid fa-code"></i> View Rule</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function togglePresetActive(type, id) {
+    const isChecked = document.getElementById(`chk-${type}-${id}`).checked;
+    if (type === 'cs') {
+        snActiveClientScripts[id] = isChecked;
+        addSNConsoleLog('client-logs', `System: Client Script [${id}] set to ${isChecked ? 'Active' : 'Inactive'}.`, 'system-line');
+        // Re-run onChange check
+        onSNImpactUrgencyChange();
+    } else if (type === 'up') {
+        snActiveUIPolicies[id] = isChecked;
+        addSNConsoleLog('client-logs', `System: UI Policy [${id}] set to ${isChecked ? 'Active' : 'Inactive'}.`, 'system-line');
+        // Re-run UI policy check
+        evaluateUIPolicies();
+    } else if (type === 'br') {
+        snActiveBusinessRules[id] = isChecked;
+        addSNConsoleLog('server-logs', `System: Business Rule [${id}] set to ${isChecked ? 'Active' : 'Inactive'}.`, 'system-line');
+    }
+}
+
+function viewPresetCode(presetType, id) {
+    if (!snPresets) return;
+    const items = snPresets[presetType];
+    const item = items.find(x => x.id === id);
+    if (!item) return;
+    
+    let content = '';
+    if (presetType === 'ui_policies') {
+        content = `UI Policy: ${item.name}\nDescription: ${item.description}\nCondition: ${item.conditions}\n\nActions:\n` + 
+                  item.actions.map(a => ` - Field '${a.field}': ` + Object.keys(a).filter(k => k !== 'field').map(k => `${k}=${a[k]}`).join(', ')).join('\n');
+    } else {
+        content = item.code;
+    }
+    
+    alert(`---------------- ServiceNow Code Viewer ----------------\n\nName: ${item.name}\n\n${content}`);
+}
+
+function populateSNFlows() {
+    if (!snPresets) return;
+    const select = document.getElementById('sn-flow-select');
+    select.innerHTML = snPresets.flows.map(f => `<option value="${f.id}">${escapeHTML(f.name)}</option>`).join('');
+    loadSNFlow();
+}
+
+function loadSNFlow() {
+    if (!snPresets) return;
+    const flowId = document.getElementById('sn-flow-select').value;
+    const flow = snPresets.flows.find(f => f.id === flowId);
+    if (!flow) return;
+    
+    snActiveFlow = flow;
+    
+    // Render workflow steps
+    const canvas = document.getElementById('flow-visual-canvas');
+    canvas.innerHTML = flow.steps.map(s => `
+        <div class="flow-node-step pending" id="flow-node-${flowId}-${s.step}">
+            <div class="flow-node-circle">${s.step}</div>
+            <div class="flow-node-content">
+                <span class="flow-node-name">${escapeHTML(s.name)}</span>
+                <span class="flow-node-action">${escapeHTML(s.action)}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function runSNFlow() {
+    if (!snActiveFlow) return;
+    const flowId = snActiveFlow.id;
+    
+    // Switch to REST tab if needed to display payload, or keep user informed
+    addSNConsoleLog('server-logs', `Flow Engine: Initiating Flow pipeline [${snActiveFlow.name}]`, 'server-line');
+    
+    for (let i = 0; i < snActiveFlow.steps.length; i++) {
+        const step = snActiveFlow.steps[i];
+        const node = document.getElementById(`flow-node-${flowId}-${step.step}`);
+        
+        // Mark active
+        if (node) {
+            node.classList.remove('pending', 'completed');
+            node.classList.add('active');
+        }
+        
+        addSNConsoleLog('server-logs', `Flow Engine [Step ${step.step}]: Running action: ${step.name}...`, 'server-line');
+        
+        // Wait 1.0s to simulate execution lag
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Execute step-specific mock behaviors
+        if (step.name === "API Synchronization") {
+            await executeRESTSyncCall();
+        } else if (step.name === "Auto-Route to On-Call Group") {
+            const groupSelect = document.getElementById('sn-assignment-group');
+            if (groupSelect) {
+                groupSelect.value = "Network Administration";
+                addSNConsoleLog('client-logs', 'g_form: Assignment Group set to Network Administration by Flow Action.', 'client-line');
+            }
+        }
+        
+        // Mark completed
+        if (node) {
+            node.classList.remove('active');
+            node.classList.add('completed');
+            const circle = node.querySelector('.flow-node-circle');
+            if (circle) circle.innerHTML = '<i class="fa-solid fa-check"></i>';
+        }
+    }
+    
+    addSNConsoleLog('server-logs', `Flow Engine: Workflow [${snActiveFlow.name}] completed successfully.`, 'server-line');
+    alert(`Flow Designer finished executing: "${snActiveFlow.name}"`);
+}
+
+// ServiceNow Client Script simulator
+const g_form = {
+    getValue: function(fieldId) {
+        const el = document.getElementById(`sn-${fieldId}`);
+        return el ? el.value : '';
+    },
+    setValue: function(fieldId, value) {
+        const el = document.getElementById(`sn-${fieldId}`);
+        if (!el) return;
+        el.value = value;
+        
+        // Recalculate formatted field text if needed
+        if (fieldId === 'priority') {
+            const labels = {
+                '1': '1 - Critical',
+                '2': '2 - High',
+                '3': '3 - Moderate',
+                '4': '4 - Low'
+            };
+            el.value = labels[value] || value;
+        }
+    },
+    setMandatory: function(fieldId, isMandatory) {
+        const label = document.querySelector(`label[for="sn-${fieldId}"]`);
+        if (!label) return;
+        
+        // Show/hide req asterisks
+        let reqMark = label.querySelector('.sn-req-marker');
+        if (isMandatory) {
+            if (!reqMark) {
+                const mark = document.createElement('span');
+                mark.className = 'sn-req-marker';
+                mark.textContent = '*';
+                label.prepend(mark);
+            }
+        } else {
+            if (reqMark) reqMark.remove();
+        }
+        
+        // Flag input element attributes
+        const input = document.getElementById(`sn-${fieldId}`);
+        if (input) input.required = isMandatory;
+    },
+    setVisible: function(fieldId, isVisible) {
+        const row = document.getElementById(`row-${fieldId}`);
+        if (row) {
+            if (isVisible) {
+                row.classList.remove('hidden');
+            } else {
+                row.classList.add('hidden');
+            }
+        }
+    },
+    setReadOnly: function(fieldId, isReadOnly) {
+        const input = document.getElementById(`sn-${fieldId}`);
+        if (input) {
+            input.readOnly = isReadOnly;
+            if (isReadOnly) {
+                input.classList.add('sn-input-readonly');
+                if (input.tagName === 'SELECT') input.disabled = true;
+            } else {
+                input.classList.remove('sn-input-readonly');
+                if (input.tagName === 'SELECT') input.disabled = false;
+            }
+        }
+    },
+    addInfoMessage: function(message) {
+        addSNConsoleLog('client-logs', `g_form.addInfoMessage: ${message}`, 'client-line');
+    },
+    addErrorMessage: function(message) {
+        addSNConsoleLog('client-logs', `g_form.addErrorMessage: ${message}`, 'error-line');
+    },
+    showFieldMsg: function(fieldId, msg, type = 'info') {
+        addSNConsoleLog('client-logs', `g_form.showFieldMsg [${fieldId}] (${type}): ${msg}`, type === 'error' ? 'error-line' : 'client-line');
+    }
+};
+
+function onSNCategoryChange() {
+    const category = g_form.getValue('category');
+    addSNConsoleLog('client-logs', `client-event: Category changed to: ${category}`, 'client-line');
+}
+
+function onSNStateChange() {
+    const state = g_form.getValue('state');
+    addSNConsoleLog('client-logs', `client-event: State changed to: ${state}`, 'client-line');
+    
+    // Evaluate UI policies when state changes
+    evaluateUIPolicies();
+}
+
+function onSNImpactUrgencyChange() {
+    const impact = g_form.getValue('impact');
+    const urgency = g_form.getValue('urgency');
+    
+    addSNConsoleLog('client-logs', `client-event: Field Change (Impact: ${impact}, Urgency: ${urgency})`, 'client-line');
+    
+    // Run Client Script preset
+    if (snActiveClientScripts['cs_priority_matrix']) {
+        // Run priority matrix script directly via mock JavaScript translation
+        let priority = '4';
+        if (impact === '1' && urgency === '1') priority = '1';
+        else if ((impact === '1' && urgency === '2') || (impact === '2' && urgency === '1')) priority = '2';
+        else if ((impact === '2' && urgency === '2') || (impact === '1' && urgency === '3') || (impact === '3' && urgency === '1')) priority = '3';
+        else priority = '4';
+        
+        g_form.setValue('priority', priority);
+        g_form.addInfoMessage(`Client Script [Impact-Urgency Matrix]: Calculated Priority as P${priority} (Impact: ${impact}, Urgency: ${urgency})`);
+    }
+}
+
+function evaluateUIPolicies() {
+    const state = g_form.getValue('state');
+    
+    // 1. Show/Require Resolution fields when state = Resolved
+    if (snActiveUIPolicies['up_resolved_fields']) {
+        if (state === 'Resolved') {
+            g_form.setVisible('resolution_code', true);
+            g_form.setMandatory('resolution_code', true);
+            g_form.addInfoMessage('UI Policy: Evaluated state = Resolved. Set Resolution Code visible and mandatory.');
+        } else {
+            g_form.setVisible('resolution_code', false);
+            g_form.setMandatory('resolution_code', false);
+        }
+    }
+    
+    // 2. Lock fields on Closed ticket
+    if (snActiveUIPolicies['up_closed_readonly']) {
+        const isClosed = (state === 'Closed');
+        const fields = ['category', 'impact', 'urgency', 'short_description', 'assignment_group', 'work_notes', 'resolution_code'];
+        
+        fields.forEach(f => {
+            g_form.setReadOnly(f, isClosed);
+        });
+        
+        if (isClosed) {
+            g_form.addInfoMessage('UI Policy: Evaluated state = Closed. Locked all editable fields.');
+        }
+    }
+}
+
+function resetSNForm() {
+    // Generate a new incident sys_id and record number
+    const sysId = Array.from({length: 32}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    document.getElementById('sn-sys-id').value = sysId;
+    
+    const module = document.getElementById('sn-module-select').value;
+    let numPrefix = 'INC';
+    if (module === 'problem') numPrefix = 'PRB';
+    if (module === 'change') numPrefix = 'CHG';
+    
+    const randomNum = Math.floor(100000 + Math.random() * 900000);
+    const ticketNumber = `${numPrefix}${randomNum}`;
+    
+    document.getElementById('sn-number').value = ticketNumber;
+    document.getElementById('sn-ticket-header-number').textContent = ticketNumber;
+    
+    // Reset other fields
+    document.getElementById('sn-short-description').value = `Infrastructure latency identified in corporate cluster`;
+    document.getElementById('sn-caller').value = 'john.doe@enterprise.local';
+    document.getElementById('sn-category').value = 'Software';
+    document.getElementById('sn-state').value = 'New';
+    document.getElementById('sn-impact').value = '3';
+    document.getElementById('sn-urgency').value = '3';
+    document.getElementById('sn-priority').value = '4 - Low';
+    document.getElementById('sn-assignment-group').value = 'IT Service Desk';
+    document.getElementById('sn-work-notes').value = '';
+    
+    if (document.getElementById('sn-resolution-code')) {
+        document.getElementById('sn-resolution-code').value = '';
+    }
+    
+    // Run initial loaders
+    g_form.setVisible('resolution_code', false);
+    g_form.setMandatory('resolution_code', false);
+    
+    // Make sure fields are editable again (in case previously closed)
+    const fields = ['category', 'impact', 'urgency', 'short_description', 'assignment_group', 'work_notes', 'resolution_code'];
+    fields.forEach(f => {
+        g_form.setReadOnly(f, false);
+    });
+    
+    addSNConsoleLog('client-logs', `System: Form reset. Created blank record ${ticketNumber}.`, 'system-line');
+    addSNConsoleLog('server-logs', `System: Database connection established. Sandbox table structure mapped.`, 'system-line');
+}
+
+function onSNModuleChange() {
+    resetSNForm();
+    loadSNFlow();
+}
+
+async function submitSNForm() {
+    // 1. Run Client onSubmit Scripts
+    if (snActiveClientScripts['cs_mandatory_fields']) {
+        const state = g_form.getValue('state');
+        if (state === 'Resolved') {
+            const resCode = document.getElementById('sn-resolution-code').value;
+            const workNotes = document.getElementById('sn-work-notes').value;
+            
+            if (!resCode) {
+                g_form.showFieldMsg('resolution_code', 'Resolution code is required to close this ticket.', 'error');
+                g_form.addErrorMessage('Submission aborted: Missing resolution details.');
+                alert('Submission Aborted by Client Script: Resolution Code is required!');
+                return;
+            }
+            if (!workNotes || workNotes.length < 10) {
+                g_form.showFieldMsg('work_notes', 'Provide detailed work notes (min 10 chars).', 'error');
+                g_form.addErrorMessage('Submission aborted: Work notes must describe the fix.');
+                alert('Submission Aborted by Client Script: Detailed work notes must be provided!');
+                return;
+            }
+        }
+    }
+    
+    addSNConsoleLog('client-logs', 'g_form: Client side validations passed. Submitting to GlideRecord DB...', 'client-line');
+    
+    // 2. Simulate GlideRecord DB server-side insert / update
+    addSNConsoleLog('server-logs', 'GlideSystem: Executing server-side Business Rules...', 'server-line');
+    
+    let currentRecord = {
+        sys_id: document.getElementById('sn-sys-id').value,
+        number: document.getElementById('sn-number').value,
+        short_description: document.getElementById('sn-short-description').value,
+        priority: g_form.getValue('priority').substring(0, 1),
+        state: g_form.getValue('state'),
+        category: g_form.getValue('category'),
+        impact: g_form.getValue('impact'),
+        urgency: g_form.getValue('urgency'),
+        assignment_group: document.getElementById('sn-assignment-group').value,
+        caller: document.getElementById('sn-caller').value,
+        resolution_code: document.getElementById('sn-resolution-code') ? document.getElementById('sn-resolution-code').value : '',
+        work_notes: document.getElementById('sn-work-notes').value
+    };
+    
+    // Run Business Rule: Before Insert / Update
+    if (snActiveBusinessRules['br_auto_assignment']) {
+        const category = currentRecord.category;
+        let newGroup = currentRecord.assignment_group;
+        
+        if (category === 'Network') {
+            newGroup = 'Network Administration';
+        } else if (category === 'Database') {
+            newGroup = 'Database Operations';
+        } else if (category === 'Hardware') {
+            newGroup = 'Hardware Support Team';
+        } else {
+            newGroup = 'IT Service Desk';
+        }
+        
+        currentRecord.assignment_group = newGroup;
+        document.getElementById('sn-assignment-group').value = newGroup;
+        
+        addSNConsoleLog('server-logs', `Business Rule [Auto-Assign Tech Teams]: Set assignment_group to "${newGroup}" based on category: ${category}`, 'server-line');
+    }
+    
+    // Simulate database record write
+    addSNConsoleLog('server-logs', `GlideRecord DB: Successfully committed record ${currentRecord.number} into platform storage.`, 'server-line');
+    
+    // Run Business Rule: After Update / Insert
+    if (snActiveBusinessRules['br_p1_escalation']) {
+        if (currentRecord.priority === '1') {
+            addSNConsoleLog('server-logs', `Business Rule [P1 Critical Escalation]: Alerting SLA system of critical tier breach! SLA target shrunk to 2.0h.`, 'error-line');
+            
+            // Auto run Flow Designer as well since it triggers on P1 creation!
+            const selectFlow = document.getElementById('sn-flow-select');
+            if (selectFlow) {
+                selectFlow.value = 'flow_p1_critical';
+                loadSNFlow();
+                setTimeout(() => {
+                    alert("Business Rule alert: Severity 1 Event! Auto-triggering critical SLA Flow Designer pipeline.");
+                    runSNFlow();
+                }, 800);
+            }
+        }
+    }
+    
+    // Trigger mock outbound API sync if not already handled by SLA flow
+    if (currentRecord.state === 'Resolved' || currentRecord.state === 'Closed') {
+        await executeRESTSyncCall();
+    } else {
+        alert(`Record ${currentRecord.number} updated successfully in PDI database.`);
+    }
+}
+
+async function executeRESTSyncCall() {
+    addSNConsoleLog('rest-logs', 'REST Integration: Generating payload for outbound message dispatch...', 'rest-line');
+    
+    const payload = {
+        sys_id: document.getElementById('sn-sys-id').value,
+        number: document.getElementById('sn-number').value,
+        short_description: document.getElementById('sn-short-description').value,
+        priority: g_form.getValue('priority').substring(0, 1),
+        state: g_form.getValue('state'),
+        assignment_group: document.getElementById('sn-assignment-group').value,
+        caller: document.getElementById('sn-caller').value,
+        category: g_form.getValue('category'),
+        impact: g_form.getValue('impact'),
+        urgency: g_form.getValue('urgency'),
+        resolution_code: document.getElementById('sn-resolution-code') ? document.getElementById('sn-resolution-code').value : '',
+        work_notes: document.getElementById('sn-work-notes').value
+    };
+    
+    // Print payload log
+    addSNConsoleLog('rest-logs', `REST Outbound JSON payload:\n${JSON.stringify(payload, null, 2)}`, 'rest-line');
+    
+    try {
+        const response = await apiFetch('/api/servicenow/sync', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        
+        addSNConsoleLog('rest-logs', `REST Response Status: 200 OK`, 'server-line');
+        addSNConsoleLog('rest-logs', `REST Sync Complete. External Ref ID: ${response.external_id} synced into ${response.external_system}`, 'server-line');
+        addSNConsoleLog('rest-logs', `JSON Response Payload:\n${JSON.stringify(response, null, 2)}`, 'server-line');
+        
+    } catch (err) {
+        addSNConsoleLog('rest-logs', `REST Sync failed: ${err.message}`, 'error-line');
+    }
+}
+
+// Utility helper to escape HTML inside presets
+function escapeHTML(str) {
+    if (!str) return '';
+    return str.replace(/[&<>'"]/g, 
+        tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag)
+    );
 }

@@ -25,10 +25,11 @@
         <div class="login-card glassmorphic">
             <div class="login-header">
                 <i class="fa-solid fa-shield-halved logo-icon"></i>
-                <h2>ITSM Portal</h2>
-                <p>Enterprise Active Directory Authentication</p>
+                <h2 id="auth-title">ITSM Portal</h2>
+                <p id="auth-subtitle">Enterprise Active Directory Authentication</p>
             </div>
             
+            <!-- Login Form -->
             <form id="login-form">
                 <div class="input-group">
                     <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
@@ -46,8 +47,59 @@
                 <button type="submit" id="login-btn" class="btn btn-primary btn-block">
                     <span>Authenticate Securely</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>
                 </button>
+                
+                <div class="auth-toggle-link" style="text-align: center; margin-top: 15px; font-size: 13px;">
+                    <a href="#" onclick="toggleAuthView('register')" style="color: var(--accent-blue); text-decoration: none;">New here? Create your credential</a>
+                </div>
             </form>
-            <div id="login-error" class="alert alert-danger hidden"></div>
+
+            <!-- Registration Form -->
+            <form id="register-form" class="hidden" onsubmit="event.preventDefault();">
+                <div class="input-group">
+                    <label for="reg-username"><i class="fa-solid fa-user"></i> Username</label>
+                    <input type="text" id="reg-username" placeholder="Choose a username" required>
+                </div>
+                <div class="input-group">
+                    <label for="reg-email"><i class="fa-solid fa-envelope"></i> Email Address</label>
+                    <input type="email" id="reg-email" placeholder="email@example.com" required>
+                </div>
+                <div class="input-group">
+                    <label for="reg-password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <input type="password" id="reg-password" placeholder="Min 8 characters" required>
+                </div>
+                
+                <div class="input-group-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="input-group">
+                        <label for="reg-role"><i class="fa-solid fa-user-shield"></i> Portal Role</label>
+                        <select id="reg-role" required>
+                            <option value="admin">Admin (All Views)</option>
+                            <option value="agent">Agent (Queue Manager)</option>
+                            <option value="user" selected>User (Standard Requester)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-dept"><i class="fa-solid fa-building"></i> Department</label>
+                        <select id="reg-dept" required>
+                            <option value="IT" selected>IT</option>
+                            <option value="Finance">Finance</option>
+                            <option value="HR">HR</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Operations">Operations</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button type="submit" id="register-btn" class="btn btn-primary btn-block" style="margin-top: 15px;">
+                    <span>Create Account & Register</span> <i class="fa-solid fa-user-plus"></i>
+                </button>
+                
+                <div class="auth-toggle-link" style="text-align: center; margin-top: 15px; font-size: 13px;">
+                    <a href="#" onclick="toggleAuthView('login')" style="color: var(--accent-blue); text-decoration: none;">Already have an account? Log in</a>
+                </div>
+            </form>
+            
+            <div id="login-error" class="alert alert-danger hidden" style="margin-top: 15px;"></div>
+            <div id="register-success" class="alert alert-success hidden" style="margin-top: 15px;"></div>
         </div>
     </div>
 

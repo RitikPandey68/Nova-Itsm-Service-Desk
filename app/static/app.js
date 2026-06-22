@@ -69,6 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Set up form listeners
     document.getElementById("login-form").addEventListener("submit", handleLoginSubmit);
+    document.getElementById("register-form").addEventListener("submit", handleRegisterSubmit);
     document.getElementById("create-incident-form").addEventListener("submit", handleCreateIncidentSubmit);
     document.getElementById("create-asset-form").addEventListener("submit", handleCreateAssetSubmit);
     document.getElementById("resolve-ticket-form").addEventListener("submit", handleResolveTicketSubmit);
@@ -1880,4 +1881,90 @@ function escapeHTML(str) {
             '"': '&quot;'
         }[tag] || tag)
     );
+}
+
+// ==========================================
+// Authentication View and Register Handler
+// ==========================================
+
+function toggleAuthView(view) {
+    const loginForm = document.getElementById("login-form");
+    const registerForm = document.getElementById("register-form");
+    const authTitle = document.getElementById("auth-title");
+    const authSubtitle = document.getElementById("auth-subtitle");
+    const loginError = document.getElementById("login-error");
+    const registerSuccess = document.getElementById("register-success");
+    
+    // Clear errors
+    loginError.classList.add("hidden");
+    loginError.innerText = "";
+    registerSuccess.classList.add("hidden");
+    registerSuccess.innerText = "";
+    
+    if (view === "register") {
+        loginForm.classList.add("hidden");
+        registerForm.classList.remove("hidden");
+        authTitle.innerText = "Create Account";
+        authSubtitle.innerText = "Register your custom portal credentials";
+    } else {
+        loginForm.classList.remove("hidden");
+        registerForm.classList.add("hidden");
+        authTitle.innerText = "ITSM Portal";
+        authSubtitle.innerText = "Enterprise Active Directory Authentication";
+    }
+}
+
+async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    const usernameInput = document.getElementById("reg-username").value.trim();
+    const emailInput = document.getElementById("reg-email").value.trim();
+    const passwordInput = document.getElementById("reg-password").value;
+    const roleInput = document.getElementById("reg-role").value;
+    const deptInput = document.getElementById("reg-dept").value;
+    
+    const errorDiv = document.getElementById("login-error");
+    const successDiv = document.getElementById("register-success");
+    const registerBtn = document.getElementById("register-btn");
+    
+    errorDiv.classList.add("hidden");
+    successDiv.classList.add("hidden");
+    registerBtn.disabled = true;
+    const originalText = registerBtn.innerHTML;
+    registerBtn.innerHTML = '<span>Creating Account...</span> <i class="fa-solid fa-spinner fa-spin"></i>';
+    
+    try {
+        const payload = {
+            username: usernameInput,
+            email: emailInput,
+            password: passwordInput,
+            role: roleInput,
+            department: deptInput
+        };
+        
+        await apiFetch("/api/auth/register", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        
+        // Success: switch back to login and notify
+        successDiv.innerText = "Account created successfully! You can now log in.";
+        successDiv.classList.remove("hidden");
+        
+        // Reset registration form
+        document.getElementById("register-form").reset();
+        
+        // Wait 1.5 seconds and switch to login
+        setTimeout(() => {
+            toggleAuthView("login");
+            // Prefill username
+            document.getElementById("login-username").value = usernameInput;
+        }, 1500);
+        
+    } catch (err) {
+        errorDiv.innerText = err.message || "Registration failed. Try again.";
+        errorDiv.classList.remove("hidden");
+    } finally {
+        registerBtn.disabled = false;
+        registerBtn.innerHTML = originalText;
+    }
 }

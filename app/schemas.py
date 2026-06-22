@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, date
 
@@ -8,7 +8,7 @@ from datetime import datetime, date
 
 class UserBase(BaseModel):
     username: str
-    email: EmailStr
+    email: str
     role: str = "user"
     department: str = "IT"
 
